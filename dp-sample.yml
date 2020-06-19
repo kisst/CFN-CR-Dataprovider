@@ -1,0 +1,51 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Data provider for AWS services
+
+Parameters:
+  Version:
+    Type: Number
+    Description: "Just for testing"
+    Default: 1
+
+
+Resources:
+  # VpcInfo - VPC Lookup
+  SubnetInfo:
+    Type: Custom::Subnet
+    Properties:
+      ServiceToken:
+        Fn::ImportValue: !Sub "cfn:cfn-dataprovider:${AWS::Region}:arn"
+      Filter:  # For more options check https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_subnets
+        cidr: 172.31.32.0/20
+        default-for-az: True
+        state: available
+        availability-zone: eu-west-2b
+        tag-key: blue
+        "tag:Name": subnetname
+      Tags:
+        - Key: Version
+          Value: !Ref Version
+
+  VPCInfo:
+    Type: Custom::VPC
+    Properties:
+      ServiceToken:
+        Fn::ImportValue: !Sub "cfn:cfn-dataprovider:${AWS::Region}:arn"
+      Filter:  # For more options check https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_vpcs
+        vpc-id: !GetAtt SubnetInfo.VpcId
+
+
+Outputs:
+  SubnetID:
+    Description: "SubnetID"
+    Value: !Ref SubnetInfo
+  VPCId:
+    Description: "The VPC where this subnet is"
+    Value: !GetAtt SubnetInfo.VpcId
+  AvailabilityZone:
+    Description: "The AvailabilityZone for this subnet"
+    Value: !GetAtt SubnetInfo.AvailabilityZone
+  IsVPCDefault:
+    Description: "Is that VPC the default"
+    Value: !GetAtt VPCInfo.IsDefault
