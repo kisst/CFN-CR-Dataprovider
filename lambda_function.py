@@ -7,6 +7,7 @@ log = logging.getLogger()
 # log.setLevel(logging.INFO)
 log.setLevel(logging.DEBUG)
 
+
 def flat_out_filter(cfn_filter):
     """ Flat out the filter structure """
     flat_filter = []
@@ -18,29 +19,34 @@ def flat_out_filter(cfn_filter):
         flat_filter.append(condition)
     return flat_filter
 
-def flat_out_dict(d, flat=dict(), prefix=""):
+
+def flat_out_dict(dictionary, flat=dict(), prefix=""):
     """ Flat out dict so all attributes can be accessed with GetAtt """
-    for k,v in d.items():
+    for key, value in dictionary.items():
         if prefix == "":
-            key = str(k)
+            key = str(key)
         else:
-            key = prefix + "." + str(k)
-        if isinstance(v, dict):
-            flat_out_dict(v, flat, key)
+            key = prefix + "." + str(key)
+        if isinstance(value, dict):
+            flat_out_dict(value, flat, key)
         else:
-            flat[key]=str(v)
-    return(flat)
+            flat[key] = str(value)
+    return flat
+
 
 def handler(event, context):
     """Main Lambda Function"""
+    # default is failed with no data
     response_data = {}
+    response_status = cfnresponse.FAILED
 
     log.debug("Received event: %s", json.dumps(event))
-    try: filters = flat_out_filter(event["ResourceProperties"]["Filter"])
-    except KeyError: filters = []
+    filters = flat_out_filter(event["ResourceProperties"]["Filter"])
+    filters_raw = event["ResourceProperties"]["Filter"]
     log.debug("Where filters are: %s", filters)
 
     if event["RequestType"] == "Delete":
+        # Nothing to do here, let's signal CFN that we are done
         response_status = cfnresponse.SUCCESS
         cfnresponse.send(event, context, response_status, response_data)
         return
@@ -52,9 +58,10 @@ def handler(event, context):
         if len(search["Subnets"]) == 1:
             subnet = search["Subnets"][0]
             response_status = cfnresponse.SUCCESS
-            cfnresponse.send(event, context, response_status, subnet, subnet["SubnetId"])
+            cfnresponse.send(
+                event, context, response_status, subnet, subnet["SubnetId"]
+            )
         else:
-            response_status = cfnresponse.FAILED
             cfnresponse.send(event, context, response_status, response_data)
 
     elif event["ResourceType"] == "Custom::VPC":
@@ -66,23 +73,25 @@ def handler(event, context):
             response_status = cfnresponse.SUCCESS
             cfnresponse.send(event, context, response_status, vpc, vpc["VpcId"])
         else:
-            response_status = cfnresponse.FAILED
             cfnresponse.send(event, context, response_status, response_data)
-    
+
     elif event["ResourceType"] == "Custom::R53HostedZone":
         log.debug("R53 Hosted Zone lookup")
         r53 = boto3.client("route53")
-        try: zone_id = event["ResourceProperties"]["HostedZoneId"]
-        except KeyError: zone_id = None
-        zone = r53.get_hosted_zone(Id=zone_id)        
+        if "HostedZoneId" in filters_raw:
+            zone_id = filters_raw["HostedZoneId"]
+            zone = r53.get_hosted_zone(Id=zone_id)
+        else:
+            log.erro("Unsupported R53 filters")
+            zone = False
         if zone:
             response_status = cfnresponse.SUCCESS
-            cfnresponse.send(event, context, response_status, flat_out_dict(zone), zone_id)
+            cfnresponse.send(
+                event, context, response_status, flat_out_dict(zone), zone_id
+            )
         else:
-            response_status = cfnresponse.FAILED
             cfnresponse.send(event, context, response_status, response_data)
 
     else:
         log.error("Unsupported resource lookup")
-        response_status = cfnresponse.FAILED
         cfnresponse.send(event, context, response_status, response_data)

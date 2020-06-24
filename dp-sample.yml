@@ -10,6 +10,10 @@ Parameters:
     Type: Number
     Description: "Just for testing"
     Default: 1
+  SubnetCidr:
+    Type: String
+    Description: "The CIDR of subnet to be found"
+    Default: 172.31.32.0/20
 
 Resources:
   ZoneInfo:
@@ -17,7 +21,8 @@ Resources:
     Properties:
       ServiceToken:
         Fn::ImportValue: !Sub "cfn:cfn-dataprovider:${AWS::Region}:arn"
-      HostedZoneId: !Ref HostedZoneId
+      Filter:
+        HostedZoneId: !Ref HostedZoneId
       Tags:
         - Key: Version
           Value: !Ref Version
@@ -28,10 +33,8 @@ Resources:
       ServiceToken:
         Fn::ImportValue: !Sub "cfn:cfn-dataprovider:${AWS::Region}:arn"
       Filter:  # For more options check https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_subnets
-        #cidr: 172.31.32.0/20
-        default-for-az: False
+        cidr: !Ref SubnetCidr
         state: available
-        availability-zone: !Sub '${AWS::Region}a'
         #tag-key: blue
         #"tag:Name": subnetname
       Tags:
