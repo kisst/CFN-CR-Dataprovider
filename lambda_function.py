@@ -7,6 +7,12 @@ log = logging.getLogger()
 # log.setLevel(logging.INFO)
 log.setLevel(logging.DEBUG)
 
+def cfn_failed(event, context):
+    """ Short function for signaling CFN about fault """
+    resp_data = {}
+    resp = cfnresponse.FAILED
+    cfnresponse.send(event, context, resp, resp_data)
+
 
 def flat_out_filter(cfn_filter):
     """ Flat out the filter structure """
@@ -37,9 +43,6 @@ def flat_out_dict(dictionary, flat=dict(), prefix=""):
 def handler(event, context):
     """Main Lambda Function"""
     # default is failed with no data
-    response_data = {}
-    response_status = cfnresponse.FAILED
-
     log.debug("Received event: %s", json.dumps(event))
     filters = flat_out_filter(event["ResourceProperties"]["Filter"])
     filters_raw = event["ResourceProperties"]["Filter"]
@@ -47,8 +50,8 @@ def handler(event, context):
 
     if event["RequestType"] == "Delete":
         # Nothing to do here, let's signal CFN that we are done
-        response_status = cfnresponse.SUCCESS
-        cfnresponse.send(event, context, response_status, response_data)
+        resp = cfnresponse.SUCCESS
+        cfnresponse.send(event, context, resp, {})
         return
 
     if event["ResourceType"] == "Custom::Subnet":
@@ -57,12 +60,12 @@ def handler(event, context):
         search = ec2.describe_subnets(Filters=filters)
         if len(search["Subnets"]) == 1:
             subnet = search["Subnets"][0]
-            response_status = cfnresponse.SUCCESS
+            resp = cfnresponse.SUCCESS
             cfnresponse.send(
-                event, context, response_status, subnet, subnet["SubnetId"]
+                event, context, resp, subnet, subnet["SubnetId"]
             )
         else:
-            cfnresponse.send(event, context, response_status, response_data)
+            cfn_failed(event, context)
 
     elif event["ResourceType"] == "Custom::VPC":
         log.debug("VPC lookup")
@@ -70,28 +73,44 @@ def handler(event, context):
         search = ec2.describe_vpcs(Filters=filters)
         if len(search["Vpcs"]) == 1:
             vpc = search["Vpcs"][0]
-            response_status = cfnresponse.SUCCESS
-            cfnresponse.send(event, context, response_status, vpc, vpc["VpcId"])
+            resp = cfnresponse.SUCCESS
+            cfnresponse.send(event, context, resp, vpc, vpc["VpcId"])
         else:
-            cfnresponse.send(event, context, response_status, response_data)
+            cfn_failed(event, context)
 
     elif event["ResourceType"] == "Custom::R53HostedZone":
         log.debug("R53 Hosted Zone lookup")
         r53 = boto3.client("route53")
         if "HostedZoneId" in filters_raw:
             zone_id = filters_raw["HostedZoneId"]
-            zone = r53.get_hosted_zone(Id=zone_id)
+        elif "DNSName" in filters_raw:
+            print(filters_raw["DNSName"])
+            zone_list = r53.list_hosted_zones_by_name(DNSName=filters_raw["DNSName"])
+            if not zone_list:
+                log.error("Error on R53 lookup")
+                cfn_failed(event, context)
+            zones = []
+            for zone in zone_list["HostedZones"]:
+                private = str(zone["Config"]["PrivateZone"]).lower()
+                if private == filters_raw["PrivateZone"].lower():
+                    zones.append(zone)
+            if len(zones) == 1:
+                zone_id = zones[0]["Id"].split("/")[2]
+            else:
+                log.error("Too many or too few matches")
+                cfn_failed(event, context)
         else:
-            log.erro("Unsupported R53 filters")
-            zone = False
+            log.error("Unsupported R53 filters")
+            cfn_failed(event, context)
+        zone = r53.get_hosted_zone(Id=zone_id)
         if zone:
-            response_status = cfnresponse.SUCCESS
+            resp = cfnresponse.SUCCESS
             cfnresponse.send(
-                event, context, response_status, flat_out_dict(zone), zone_id
+                event, context, resp, flat_out_dict(zone), zone_id
             )
         else:
-            cfnresponse.send(event, context, response_status, response_data)
+            cfn_failed(event, context)
 
     else:
         log.error("Unsupported resource lookup")
-        cfnresponse.send(event, context, response_status, response_data)
+        cfn_failed(event, context)

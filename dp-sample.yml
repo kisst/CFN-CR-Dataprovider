@@ -6,6 +6,9 @@ Parameters:
   HostedZoneId:
     Type: AWS::Route53::HostedZone::Id
     Description: Route53 Hosted Zone ID
+  DNSName:
+    Type: String
+    Description: Route53 Hosted DNS Name
   Version:
     Type: Number
     Description: "Just for testing"
@@ -16,13 +19,25 @@ Parameters:
     Default: 172.31.32.0/20
 
 Resources:
-  ZoneInfo:
+  ZoneInfoBaseOnID:
     Type: Custom::R53HostedZone
     Properties:
       ServiceToken:
         Fn::ImportValue: !Sub "cfn:cfn-dataprovider:${AWS::Region}:arn"
       Filter:
         HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: Version
+          Value: !Ref Version
+
+  ZoneInfoBasedOnName:
+    Type: Custom::R53HostedZone
+    Properties:
+      ServiceToken:
+        Fn::ImportValue: !Sub "cfn:cfn-dataprovider:${AWS::Region}:arn"
+      Filter:
+        DNSName: !Ref DNSName
+        PrivateZone: False
       Tags:
         - Key: Version
           Value: !Ref Version
@@ -52,13 +67,13 @@ Resources:
 Outputs:
   HostedZoneName:
     Description: "Hosted Zone Name"
-    Value: !GetAtt ZoneInfo.HostedZone.Name
+    Value: !GetAtt ZoneInfoBaseOnID.HostedZone.Name
   HostedZoneRecords:
     Description: "Number of Records"
-    Value: !GetAtt ZoneInfo.HostedZone.ResourceRecordSetCount
+    Value: !GetAtt ZoneInfoBaseOnID.HostedZone.ResourceRecordSetCount
   PrivateZone:
     Description: "Is that private zone"
-    Value: !GetAtt ZoneInfo.HostedZone.Config.PrivateZone
+    Value: !GetAtt ZoneInfoBasedOnName.HostedZone.Config.PrivateZone
   SubnetID:
     Description: "SubnetID"
     Value: !Ref SubnetInfo
