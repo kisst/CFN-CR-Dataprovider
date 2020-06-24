@@ -6,5 +6,6 @@ Implemented resources:
 
 * AWS::EC2::Subnet
 * AWS::EC2::VPC
+* AWS::Route53:HostedZone
 
 more to come ...
