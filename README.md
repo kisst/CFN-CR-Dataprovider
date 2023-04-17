@@ -8,4 +8,4 @@ Implemented resources:
 * AWS::EC2::VPC
 * AWS::Route53:HostedZone
 
-more to come ...
+Discontinued in favour of https://github.com/aws-cloudformation/community-registry-extensions/tree/main/resources/Resource_Lookup
